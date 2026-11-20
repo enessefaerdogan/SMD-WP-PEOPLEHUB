@@ -1,2 +1,6 @@
 .env
 .env.*
+.git
+node_modules
+*.bak*
+server.js.bak*

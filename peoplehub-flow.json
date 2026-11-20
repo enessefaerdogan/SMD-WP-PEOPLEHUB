@@ -1,0 +1,396 @@
+{
+  "version": "7.3",
+  "screens": [
+    {
+      "id": "HOME",
+      "title": "SMOD PeopleHub",
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "NavigationList",
+            "name": "hr_main_menu",
+            "list-items": [
+              {
+                "id": "main_leave",
+                "main-content": {
+                  "title": "🏖️ İzin Süreçleri",
+                  "metadata": "İzin talepleri ve kayıtlar"
+                },
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "LEAVE"
+                  }
+                }
+              },
+              {
+                "id": "main_0",
+                "main-content": {
+                  "title": "💰 Bordro ve Ücret"
+                },
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "OTHER_INFO"
+                  },
+                  "payload": {
+                    "category": "💰 Bordro ve Ücret"
+                  }
+                }
+              },
+              {
+                "id": "main_1",
+                "main-content": {
+                  "title": "🕒 Mesai ve Devam"
+                },
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "OTHER_INFO"
+                  },
+                  "payload": {
+                    "category": "🕒 Mesai ve Devam"
+                  }
+                }
+              },
+              {
+                "id": "main_2",
+                "main-content": {
+                  "title": "👤 Özlük İşlemleri"
+                },
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "OTHER_INFO"
+                  },
+                  "payload": {
+                    "category": "👤 Özlük İşlemleri"
+                  }
+                }
+              },
+              {
+                "id": "main_3",
+                "main-content": {
+                  "title": "✅ Onay İşlemleri"
+                },
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "OTHER_INFO"
+                  },
+                  "payload": {
+                    "category": "✅ Onay İşlemleri"
+                  }
+                }
+              },
+              {
+                "id": "main_4",
+                "main-content": {
+                  "title": "📋 Diğer HR İşlemleri"
+                },
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "OTHER_INFO"
+                  },
+                  "payload": {
+                    "category": "📋 Diğer HR İşlemleri"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "LEAVE",
+      "title": "İzin Süreçleri",
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "NavigationList",
+            "name": "leave_menu",
+            "list-items": [
+              {
+                "id": "leave_0",
+                "main-content": {
+                  "title": "📝 İzin Talep Et"
+                },
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "LEAVE_REQUEST"
+                  }
+                }
+              },
+              {
+                "id": "leave_1",
+                "main-content": {
+                  "title": "📊 İzin Bakiyem"
+                },
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "LEAVE_BALANCE"
+                  }
+                }
+              },
+              {
+                "id": "leave_2",
+                "main-content": {
+                  "title": "🗓️ İzin Geçmişim"
+                },
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "LEAVE_HISTORY"
+                  }
+                }
+              },
+              {
+                "id": "leave_3",
+                "main-content": {
+                  "title": "⏳ Bekleyen İzinler"
+                },
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "LEAVE_PENDING"
+                  }
+                }
+              },
+              {
+                "id": "leave_4",
+                "main-content": {
+                  "title": "❌ İzin İptali"
+                },
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "LEAVE_CANCEL"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "LEAVE_REQUEST",
+      "title": "İzin Talep Et",
+      "terminal": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextHeading",
+            "text": "Yeni İzin Talebi"
+          },
+          {
+            "type": "Dropdown",
+            "name": "awart",
+            "label": "İzin Türü",
+            "required": true,
+            "data-source": [
+              {
+                "id": "0100",
+                "title": "Yıllık İzin"
+              }
+            ]
+          },
+          {
+            "type": "CalendarPicker",
+            "name": "period",
+            "mode": "range",
+            "title": "İzin tarihleri",
+            "label": {
+              "start-date": "Başlangıç",
+              "end-date": "Bitiş"
+            },
+            "required": {
+              "start-date": true,
+              "end-date": true
+            }
+          },
+          {
+            "type": "TextCaption",
+            "text": "Önizleme: SAP sisteminde henüz izin kaydı oluşturulmaz."
+          },
+          {
+            "type": "Footer",
+            "label": "Talebi Kontrol Et",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "action": "LEAVE_PREVIEW",
+                "awart": "${form.awart}",
+                "period": "${form.period}"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "LEAVE_BALANCE",
+      "title": "📊 İzin Bakiyem",
+      "terminal": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextHeading",
+            "text": "📊 İzin Bakiyem"
+          },
+          {
+            "type": "TextBody",
+            "text": "Bu işlemin SAP OData ekranını sonraki aşamada bağlayacağız."
+          },
+          {
+            "type": "Footer",
+            "label": "Kapat",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "action": "CLOSE"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "LEAVE_HISTORY",
+      "title": "🗓️ İzin Geçmişim",
+      "terminal": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextHeading",
+            "text": "🗓️ İzin Geçmişim"
+          },
+          {
+            "type": "TextBody",
+            "text": "Bu işlemin SAP OData ekranını sonraki aşamada bağlayacağız."
+          },
+          {
+            "type": "Footer",
+            "label": "Kapat",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "action": "CLOSE"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "LEAVE_PENDING",
+      "title": "⏳ Bekleyen İzinler",
+      "terminal": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextHeading",
+            "text": "⏳ Bekleyen İzinler"
+          },
+          {
+            "type": "TextBody",
+            "text": "Bu işlemin SAP OData ekranını sonraki aşamada bağlayacağız."
+          },
+          {
+            "type": "Footer",
+            "label": "Kapat",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "action": "CLOSE"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "LEAVE_CANCEL",
+      "title": "❌ İzin İptali",
+      "terminal": true,
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextHeading",
+            "text": "❌ İzin İptali"
+          },
+          {
+            "type": "TextBody",
+            "text": "Bu işlemin SAP OData ekranını sonraki aşamada bağlayacağız."
+          },
+          {
+            "type": "Footer",
+            "label": "Kapat",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "action": "CLOSE"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "OTHER_INFO",
+      "title": "İK İşlemleri",
+      "terminal": true,
+      "data": {
+        "category": {
+          "type": "string",
+          "__example__": "Bordro ve Ücret"
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextHeading",
+            "text": "${data.category}"
+          },
+          {
+            "type": "TextBody",
+            "text": "Bu modülü sonraki aşamada bağlayacağız."
+          },
+          {
+            "type": "Footer",
+            "label": "Kapat",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "action": "CLOSE"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "version": "7.3",
+  "screens": [
+    {
+      "id": "LEAVE_FORM",
+      "title": "İzin İşlemleri",
+      "terminal": true,
+      "data": {
+        "leave_types": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          "__example__": [
+            {
+              "id": "0110",
+              "title": "İdari İzin"
+            },
+            {
+              "id": "0120",
+              "title": "Evlilik İzni"
+            }
+          ]
+        },
+        "mode": {
+          "type": "string",
+          "__example__": "HISTR"
+        },
+        "heading": {
+          "type": "string",
+          "__example__": "İzin Geçmişim"
+        },
+        "hint": {
+          "type": "string",
+          "__example__": "İzin türünü ve tarih aralığını seçin."
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextHeading",
+            "text": "${data.heading}"
+          },
+          {
+            "type": "TextBody",
+            "text": "${data.hint}"
+          },
+          {
+            "type": "Dropdown",
+            "name": "awart",
+            "label": "İzin Türü",
+            "required": true,
+            "data-source": "${data.leave_types}"
+          },
+          {
+            "type": "CalendarPicker",
+            "name": "period",
+            "mode": "range",
+            "title": "İzin tarihleri",
+            "label": {
+              "start-date": "Başlangıç",
+              "end-date": "Bitiş"
+            },
+            "required": {
+              "start-date": true,
+              "end-date": true
+            }
+          },
+          {
+            "type": "Footer",
+            "label": "Devam Et",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "action": "LEAVE_FORM",
+                "mode": "${data.mode}",
+                "awart": "${form.awart}",
+                "period": "${form.period}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
