@@ -108,10 +108,8 @@ function createLeaveFlow(
         text: "SMOD PeopleHub"
       },
       body: {
-        text:
-          $DIL0: izin türünü ve  +
-        "tarihlerini seçin."
-    },
+        text: title + ": izin türünü ve tarihlerini seçin."
+      },
     action: {
       name: "flow",
       parameters: {
@@ -164,12 +162,11 @@ async function sendTypingIndicator(messageId) {
     "v25.0";
 
   const response = await fetch(
-    https://graph.facebook.com/ +
-    $DIL0/$DIL1/messages,
+    "https://graph.facebook.com/" + version + "/" + phoneId + "/messages",
     {
       method: "POST",
       headers: {
-        Authorization: Bearer $DIL2,
+        Authorization: "Bearer " + token,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({

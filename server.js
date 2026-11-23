@@ -11,6 +11,7 @@ const {
 } = require("node:crypto");
 
 const {
+  createPeopleHubFlow,
   createLeaveFlow,
   sendTypingIndicator
 } = require("./peoplehub-wa-flow");
@@ -130,12 +131,11 @@ async function sendWhatsAppPayload(payload) {
     "v25.0";
 
   const response = await fetch(
-    https://graph.facebook.com/ +
-    $DIL3/$DIL4/messages,
+    "https://graph.facebook.com/" + version + "/" + phoneId + "/messages",
     {
       method: "POST",
       headers: {
-        Authorization: Bearer $DIL5,
+        Authorization: "Bearer " + token,
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload),
@@ -149,9 +149,7 @@ async function sendWhatsAppPayload(payload) {
       response.status
     );
 
-    throw new Error(
-      WhatsApp HTTP $DIL0
-    );
+    throw new Error("WhatsApp HTTP " + response.status);
   }
 }
 
@@ -160,11 +158,7 @@ function validPeriod(period) {
   const begda = period?.["start-date"];
   const endda = period?.["end-date"];
 
-  if (
-    !validateDate(begda)
-
-begda > endda
-) {
+  if (!validateDate(begda) || !validateDate(endda) || begda > endda) {
     return null;
   }
 
@@ -248,6 +242,25 @@ async function handleFlowReply(message) {
     );
   }
 
+
+if (data.action === "LEAVE_BALANCE") {
+  const from = message.from;
+
+  // SAP personel kaydını doğrula
+  await requirePerson(from);
+
+  // SAP LeaveSet üzerinden bakiye sorgula
+  const balance = await getLeaveBalance(from);
+
+  // Sonucu yeni WhatsApp mesajında göster
+  await sendWhatsAppPayload(
+    balancePayload(from, balance)
+  );
+
+  return;
+}
+
+
   if (data.action !== "LEAVE_FORM") {
     return;
   }
@@ -306,13 +319,14 @@ async function handleFlowReply(message) {
     const fmt = iso =>
       iso.split("-").reverse().join(".");
 
-    const response =
-      "📝 İzin Talebi Önizlemesi\n\n" +
-      Personel: $DIL0\n +
-        İzin türü: $DIL1\n +
-          Başlangıç: $DIL2\n +
-            Bitiş: $DIL3\n\n +
-              "Bilgi: SAP sisteminde henüz izin kaydı oluşturulmadı.";
+    const response = [
+      "📝 İzin Talebi Önizlemesi", "",
+      "Personel: " + (person.fullName || person.firstName || ""),
+      "İzin türü: " + (leave.title || ctx.awart),
+      "Başlangıç: " + fmt(ctx.begda),
+      "Bitiş: " + fmt(ctx.endda), "",
+      "Bilgi: SAP sisteminde henüz izin kaydı oluşturulmadı."
+    ].join("\n");
 
     await sendWhatsAppPayload(
       textPayload(message.from, response)
@@ -391,10 +405,7 @@ async function handleMessage(message) {
       const person = await requirePerson(from);
 
       await sendWhatsAppPayload(
-        createWelcomeMenu(
-          from,
-          person.firstName
-        )
+        createPeopleHubFlow(from)
       );
 
       return;
@@ -480,10 +491,7 @@ async function handleMessage(message) {
   }
 
   await sendWhatsAppPayload(
-    createWelcomeMenu(
-      from,
-      person.firstName
-    )
+    createPeopleHubFlow(from)
   );
 }
 
@@ -501,21 +509,15 @@ app.post(
       req.body.entry
     ) ? req.body.entry : [];
 
-    const messages = entries.flatMap(
-      entry => (entry.changes[]).flatMap(
-
-      )
+    const messages = entries.flatMap(entry =>
+      (entry.changes || []).flatMap(change => change.value?.messages || [])
     );
 
     for (const message of messages) {
 
-      if (
-        !message?.from
-
-processed.has(message.id)
-) {
-  continue;
-}
+      if (!message?.from || !message?.id || processed.has(message.id)) {
+        continue;
+      }
 
 processed.set(
   message.id,
@@ -583,7 +585,7 @@ if (require.main === module) {
     "0.0.0.0",
     () => {
       console.log(
-        WhatsApp Support API running on port $DIL0
+        "WhatsApp Support API running on port " + PORT
       );
     }
   );
