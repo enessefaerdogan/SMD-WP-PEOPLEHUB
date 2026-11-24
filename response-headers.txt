@@ -1,0 +1,15 @@
+HTTP/1.0 200 Connection established
+
+HTTP/2 200 
+cache-control: no-store, private
+content-disposition: attachment; filename="encrypted.pdf"
+content-type: application/pdf
+date: Mon, 23 Nov 2026 14:25:50 GMT
+pragma: no-cache
+x-content-type-options: nosniff
+x-pdf-password: ZKCFHRKKPA9U7GEF
+x-powered-by: Express
+x-vcap-request-id: 2c1674a3-41ac-409c-58fc-15f955240a2c
+content-length: 1431
+strict-transport-security: max-age=31536000; includeSubDomains; preload;
+

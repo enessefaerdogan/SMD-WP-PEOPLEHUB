@@ -1,13 +1,13 @@
 "use strict";
 
-
 require("dotenv").config();
 
 const express = require("express");
 
 const {
   createHmac,
-  timingSafeEqual
+  timingSafeEqual,
+  randomUUID
 } = require("node:crypto");
 
 const {
@@ -43,7 +43,32 @@ const {
   balancePayload
 } = require("./leave-messages");
 
+
+const {
+  payrollConfirmationPayload
+} = require("./payroll-confirmation");
+
+const {
+  getPayrollConfirmation,
+  createPayroll
+} = require("./sap-payroll-client");
+
+// Bekleyen bordro onayları
+const pendingPayroll = new Map();
+
+const PAYROLL_CONFIRM_TTL = 5 * 60 * 1000;
+
+const {
+  resultPayload,
+  endPayload,
+  parseNavigationAction
+} = require("./navigation-messages");
+
 const app = express();
+
+const pdfEncryptRouter = require("./pdf-encrypt-route");
+
+app.use(pdfEncryptRouter);
 
 const PORT = process.env.PORT || 3000;
 
@@ -168,6 +193,111 @@ function validPeriod(period) {
   };
 }
 
+// Kişiselleştirilmiş ana menü
+function createPersonalizedPeopleHubFlow(to, person) {
+  const name = String(
+    person?.fullName || person?.firstName || ""
+  ).replace(/[\r\n\t*`_~]/g, " ").trim();
+
+  const payload = createPeopleHubFlow(to);
+
+  payload.interactive.header = {
+    type: "text",
+    text: "İK İşlem Merkezi"
+  };
+
+  payload.interactive.body = {
+    text:
+      (name ? `Merhaba, *${name}*.` : "Merhaba.") +
+      "\n\nİnsan kaynakları işlemleriniz için aşağıdaki menüyü kullanabilirsiniz."
+  };
+
+  payload.interactive.action.parameters.flow_cta =
+    "İşlemlerimi Aç";
+
+  return payload;
+}
+
+// Ana menü için personel ve izin türlerini paralel al
+async function sendPeopleHubHome(from) {
+  const [person, leaveTypes] = await Promise.all([
+    getIdentity(from),
+    getLeaveTypes(from).catch(() => {
+      console.error("SAP_LEAVE_TYPES_LOAD_FAILED");
+      return [];
+    })
+  ]);
+
+  if (!person) {
+    await sendWhatsAppPayload(
+      textPayload(
+        from,
+        "Telefon numaranız SAP personel kayıtlarında bulunamadı."
+      )
+    );
+    return;
+  }
+
+  const ready = leaveTypes.length > 0 &&
+                leaveTypes.length <= 199;
+
+  const payload = createPersonalizedPeopleHubFlow(
+    from,
+    person
+  );
+
+  payload.interactive.action.parameters
+    .flow_action_payload.data = {
+      leave_types: ready
+        ? [
+            { id: "ALL", title: "Tüm İzinler" },
+            ...leaveTypes.filter(item => item.id !== "ALL")
+          ]
+        : [{
+            id: "UNAVAILABLE",
+            title: "İzin türleri alınamadı"
+          }],
+      leave_types_ready: ready,
+      leave_history_hint: ready
+        ? "İzin türünü ve tarih aralığını seçin."
+        : "İzin türleri şu anda kullanılamıyor. Daha sonra tekrar deneyin."
+    };
+
+  console.log(
+    "PEOPLEHUB_LEAVE_TYPES_COUNT:",
+    leaveTypes.length
+  );
+
+  await sendWhatsAppPayload(payload);
+}
+
+// İzin geçmişi sonuçlarına ortak navigasyon ekle
+async function sendHistoryWithNavigation(to, payload) {
+  if (
+    payload.type === "text" &&
+    payload.text?.body &&
+    payload.text.body.length <= 1024
+  ) {
+    await sendWhatsAppPayload(
+      resultPayload(to, payload.text.body)
+    );
+    return;
+  }
+
+  await sendWhatsAppPayload(payload);
+
+  await sendWhatsAppPayload(
+    resultPayload(
+      to,
+      "Başka bir işlem yapmak ister misiniz?"
+    )
+  );
+}
+
+const {
+  historyTablePayloads
+} = require("./leave-messages");
+
 function businessError(message) {
   return Object.assign(
     new Error(message),
@@ -216,12 +346,16 @@ async function authorizedHistory(from, ctx) {
     );
   }
 
-  const types = await authorizedTypes(from);
+  if (ctx.awart === "ALL") {
+    await requirePerson(from);
+  } else {
+    const types = await authorizedTypes(from);
 
-  if (!types.some(type => type.id === ctx.awart)) {
-    throw businessError(
-      "Seçilen izin türü kullanılamıyor."
-    );
+    if (!types.some(type => type.id === ctx.awart)) {
+      throw businessError(
+        "Seçilen izin türü kullanılamıyor."
+      );
+    }
   }
 
   return getLeaveHistory(from, ctx);
@@ -246,9 +380,6 @@ async function handleFlowReply(message) {
 if (data.action === "LEAVE_BALANCE") {
   const from = message.from;
 
-  // SAP personel kaydını doğrula
-  await requirePerson(from);
-
   // SAP LeaveSet üzerinden bakiye sorgula
   const balance = await getLeaveBalance(from);
 
@@ -259,6 +390,127 @@ if (data.action === "LEAVE_BALANCE") {
 
   return;
 }
+
+
+
+// Bordro sorgulama - SAP GET_ENTITY
+if (data.action === "PAYROLL_REQUEST") {
+    const from = message.from;
+
+    const year = String(
+      data.pabrj ?? data.year ?? ""
+    ).trim();
+
+    const month = String(
+      data.pabrp ?? data.month ?? ""
+    ).trim().padStart(2, "0");
+
+    if (
+      !/^\d{4}$/.test(year) ||
+      !/^(0[1-9]|1[0-2])$/.test(month)
+    ) {
+      await sendWhatsAppPayload(
+        resultPayload(
+          from,
+          "Geçersiz bordro dönemi."
+        )
+      );
+      return;
+    }
+
+    // Personel doğrulaması
+    await requirePerson(from);
+
+    let result;
+
+    try {
+      result = await getPayrollConfirmation(
+        from,
+        year,
+        month
+      );
+    } catch (error) {
+      console.error(
+        "SAP_PAYROLL_GET_FAILED",
+        error.message
+      );
+
+      await sendWhatsAppPayload(
+        resultPayload(
+          from,
+          "Bordro sorgusu şu anda gerçekleştirilemiyor."
+        )
+      );
+
+      return;
+    }
+
+    const status =
+      String(result?.Statx ?? "").trim();
+
+    const sapMessage =
+      String(result?.Mesag ?? "").trim();
+
+    // C değilse onay ekranı açılmaz
+    if (status !== "C") {
+      await sendWhatsAppPayload(
+        resultPayload(
+          from,
+          sapMessage ||
+          "Bordro sorgusu tamamlanamadı."
+        )
+      );
+      return;
+    }
+
+    if (!sapMessage) {
+      await sendWhatsAppPayload(
+        resultPayload(
+          from,
+          "SAP bordro onay mesajı alınamadı."
+        )
+      );
+      return;
+    }
+
+    // Süresi dolmuş ve bu kullanıcıya ait
+    // önceki onay kayıtlarını temizle
+    const now = Date.now();
+
+    for (const [id, pending] of pendingPayroll) {
+      if (
+        pending.expiresAt <= now ||
+        pending.from === from
+      ) {
+        pendingPayroll.delete(id);
+      }
+    }
+
+    const requestId = randomUUID();
+
+    // Parola veya GET response saklanmaz
+    pendingPayroll.set(requestId, {
+      from,
+      year,
+      month,
+      expiresAt: now + PAYROLL_CONFIRM_TTL
+    });
+
+    try {
+      await sendWhatsAppPayload(
+        payrollConfirmationPayload(
+          from,
+          sapMessage,
+          requestId
+        )
+      );
+    } catch (error) {
+      pendingPayroll.delete(requestId);
+      throw error;
+    }
+
+    return;
+  }
 
 
   if (data.action !== "LEAVE_FORM") {
@@ -280,18 +532,25 @@ if (data.action === "LEAVE_BALANCE") {
 
   // İzin geçmişi
   if (data.mode === "HISTR") {
+    const from = message.from;
+
     const records = await authorizedHistory(
-      message.from,
+      from,
       ctx
     );
 
-    await sendWhatsAppPayload(
-      historyPayload(
-        message.from,
-        records,
-        ctx
-      )
+    const { historyTablePayloads } =
+      require("./leave-messages");
+
+    const payloads = historyTablePayloads(
+      from,
+      records,
+      ctx
     );
+
+    for (const payload of payloads) {
+      await sendWhatsAppPayload(payload);
+    }
 
     return;
   }
@@ -351,6 +610,128 @@ async function handleMessage(message) {
       message.interactive?.list_reply?.id ||
       message.interactive?.button_reply?.id;
 
+    // Merkezi navigasyon yönetimi
+    const navAction = parseNavigationAction(selectedId);
+
+    if (navAction === "HOME") {
+      await sendPeopleHubHome(from);
+      return;
+    }
+
+    if (navAction === "END") {
+      await sendWhatsAppPayload(endPayload(from));
+
+      return;
+    }
+
+
+
+
+// Bordro Evet / Hayır işlemi
+const payrollDecision =
+      /^PAYROLL_(YES|NO):([a-f0-9-]{36})$/i.exec(
+        selectedId || ""
+      );
+
+    if (payrollDecision) {
+      const approved =
+        payrollDecision[1].toUpperCase() === "YES";
+
+      const requestId = payrollDecision[2];
+      const pending = pendingPayroll.get(requestId);
+
+      // Onay yalnızca ilgili kullanıcıya aittir
+      if (!pending || pending.from !== from) {
+        await sendWhatsAppPayload(
+          resultPayload(
+            from,
+            "Bordro onayı geçersiz veya daha önce kullanılmış."
+          )
+        );
+
+        return;
+      }
+
+      if (Date.now() >= pending.expiresAt) {
+        pendingPayroll.delete(requestId);
+
+        await sendWhatsAppPayload(
+          resultPayload(
+            from,
+            "Bordro onayının süresi doldu. Lütfen yeniden sorgulayın."
+          )
+        );
+
+        return;
+      }
+
+      // Her onay yalnızca bir kez kullanılabilir
+      pendingPayroll.delete(requestId);
+
+      // REDDET: SAP'ye hiçbir istek gönderilmez
+      if (!approved) {
+        console.log("PAYROLL_REQUEST_REJECTED");
+
+        await sendWhatsAppPayload(
+          resultPayload(
+            from,
+            "Bordro gönderim talebiniz iptal edildi."
+          )
+        );
+
+        return;
+      }
+
+      // ONAYLA: SAP CREATE_ENTITY
+      let result;
+
+      try {
+        await requirePerson(from);
+
+        result = await createPayroll({
+          phone: from,
+          pabrj: pending.year,
+          pabrp: pending.month,
+          confn: approved
+        });
+
+      } catch (error) {
+        console.error(
+          "SAP_PAYROLL_CREATE_FAILED",
+          error.message
+        );
+
+        const errorMessage =
+          error.message === "SAP_PAYROLL_CREATE_DISABLED"
+            ? "Bordro gönderimi şu anda etkin değil."
+            : "Bordro gönderim sonucu doğrulanamadı. Tekrar işlem yapmadan önce e-posta adresinizi kontrol edin.";
+
+        await sendWhatsAppPayload(
+          resultPayload(
+            from,
+            errorMessage
+          )
+        );
+
+        return;
+      }
+
+      const sapMessage =
+        String(result?.Mesag ?? "").trim();
+
+      // SAP mesajını doğrudan göster
+      await sendWhatsAppPayload(
+        resultPayload(
+          from,
+          sapMessage ||
+          "SAP bordro gönderim sonucu doğrulanamadı."
+        )
+      );
+
+      return;
+    }
+
+
     // İzin geçmişi kayıt seçimi ve sayfalama
     const selection = parseSelectionId(
       selectedId
@@ -369,15 +750,17 @@ async function handleMessage(message) {
           );
         }
 
-        await sendWhatsAppPayload(
-          historyDetail(
+        await sendHistoryWithNavigation(
+        message.from,
+        historyDetail(
             from,
             records[selection.index]
           )
         );
       } else {
-        await sendWhatsAppPayload(
-          historyPayload(
+        await sendHistoryWithNavigation(
+        message.from,
+        historyPayload(
             from,
             records,
             selection.ctx,
@@ -402,12 +785,7 @@ async function handleMessage(message) {
 
     // İzin menüsünden ana menüye dönüş
     if (selectedId === "LEAVE_HOME") {
-      const person = await requirePerson(from);
-
-      await sendWhatsAppPayload(
-        createPeopleHubFlow(from)
-      );
-
+      await sendPeopleHubHome(from);
       return;
     }
 
@@ -431,8 +809,6 @@ async function handleMessage(message) {
 
     // İzin bakiyesi
     if (selectedId === "LEAVE_BALANCE") {
-      await requirePerson(from);
-
       const balance = await getLeaveBalance(from);
 
       await sendWhatsAppPayload(
@@ -477,22 +853,7 @@ async function handleMessage(message) {
     return;
   }
 
-  const person = await getIdentity(from);
-
-  if (!person) {
-    await sendWhatsAppPayload(
-      textPayload(
-        from,
-        "Telefon numaranız SAP personel kayıtlarında bulunamadı."
-      )
-    );
-
-    return;
-  }
-
-  await sendWhatsAppPayload(
-    createPeopleHubFlow(from)
-  );
+  await sendPeopleHubHome(from);
 }
 
 // Basit webhook tekrar işleme koruması

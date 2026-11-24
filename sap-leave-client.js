@@ -110,20 +110,6 @@ function createKeyPath(phone, reqid) {
 }
 
 // SAP metadata'daki navigation adı
-function navigationProperty() {
-  const value =
-    process.env.SAP_LEAVE_NAV_PROPERTY || "";
-
-  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(value)) {
-    throw new Error(
-      "AWART/HISTR için SAP_LEAVE_NAV_PROPERTY eksik. " +
-      "Key bazlı GET_ENTITYSET için SEGW üzerinde " +
-      "collection navigation tanımlı olmalı."
-    );
-  }
-
-  return value;
-}
 
 // BALNC: GET_ENTITY
 function makeKeyUrl(root, phone, reqid) {
@@ -142,50 +128,75 @@ function makeKeyUrl(root, phone, reqid) {
 }
 
 // AWART ve HISTR: navigation GET_ENTITYSET
-function makeCollectionUrl(
-  root,
-  phone,
-  reqid,
-  filter
-) {
-  const path =
-    `${createKeyPath(phone, reqid)}/` +
-    navigationProperty();
+function makeCollectionUrl(root, phone, reqid, filter) {
+  const url = new URL("LeaveSet", root);
 
-  const url = new URL(path, root);
+  const filters = [
+    `Phone eq ${quoteOData(phone)}`,
+    `Reqid eq ${quoteOData(reqid)}`
+  ];
 
+  if (filter) {
+    filters.push(filter);
+  }
+
+  url.searchParams.set("$filter", filters.join(" and "));
   url.searchParams.set("$format", "json");
   url.searchParams.set(
     "sap-client",
     process.env.SAP_CLIENT || "100"
   );
 
-  if (filter) {
-    url.searchParams.set("$filter", filter);
-  }
-
+  url.searchParams.set("sap-language", "TR");
   return url;
 }
 
 // SAP GET isteği
 async function requestJson(url, authorization) {
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: authorization,
-      Accept: "application/json"
-    },
-    redirect: "error",
-    signal: AbortSignal.timeout(15000)
-  });
+  const startedAt = Date.now();
 
-  if (!response.ok) {
-    throw new Error(
-      `SAP LeaveSet HTTP ${response.status}`
+  const safePath = decodeURIComponent(url.pathname)
+    .replace(/Phone='[^']*'/gi, "Phone='***'");
+
+  console.log("SAP_LEAVE_REQUEST:", safePath);
+  console.log("SAP_LEAVE_CLIENT:", url.searchParams.get("sap-client"));
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: authorization,
+        Accept: "application/json"
+      },
+      redirect: "error",
+      signal: AbortSignal.timeout(30000)
+    });
+
+    console.log("SAP_LEAVE_STATUS:", response.status);
+    console.log("SAP_LEAVE_DURATION_MS:", Date.now() - startedAt);
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+
+      console.error(
+        "SAP_LEAVE_ERROR_CODE:",
+        body?.error?.code || "UNKNOWN"
+      );
+
+      throw new Error(
+        `SAP LeaveSet HTTP ${response.status}`
+      );
+    }
+
+    return await response.json();
+
+  } catch (error) {
+    console.error(
+      "SAP_LEAVE_REQUEST_FAILED:",
+      error.message
     );
+    throw error;
   }
-
-  return response.json();
 }
 
 // Çok sayfalı OData V2 yanıtlarını birleştir
@@ -215,7 +226,7 @@ async function readCollection(
 
     if (!Array.isArray(page)) {
       throw new Error(
-        "SAP OData navigation yanıtı liste değil."
+        "SAP OData koleksiyon yanıtı liste değil."
       );
     }
 
@@ -300,7 +311,12 @@ async function getLeaveHistory(
   whatsappNumber,
   { awart, begda, endda }
 ) {
-  if (!/^\d{4}$/.test(String(awart))) {
+  const leaveType = String(awart ?? "").trim();
+
+  if (
+    leaveType !== "ALL" &&
+    !/^\d{4}$/.test(leaveType)
+  ) {
     throw new Error("Geçersiz izin türü.");
   }
 
@@ -315,17 +331,22 @@ async function getLeaveHistory(
   const { root, authorization } = getSapSettings();
   const phone = getSapPhone(whatsappNumber);
 
-  const filter = [
+  const filters = [
     `Begda eq ${dateLiteral(begda)}`,
-    `Endda eq ${dateLiteral(endda)}`,
-    `Awart eq ${quoteOData(awart)}`
-  ].join(" and ");
+    `Endda eq ${dateLiteral(endda)}`
+  ];
+
+  if (leaveType !== "ALL") {
+    filters.push(
+      `Awart eq ${quoteOData(leaveType)}`
+    );
+  }
 
   const url = makeCollectionUrl(
     root,
     phone,
     "HISTR",
-    filter
+    filters.join(" and ")
   );
 
   return readCollection(

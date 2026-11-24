@@ -1,6 +1,8 @@
 
 "use strict";
 
+const { resultPayload } = require("./navigation-messages");
+
 const PAGE_SIZE = 8;
 
 function safe(value) {
@@ -220,14 +222,31 @@ function historyDetail(to, record) {
   );
 }
 
+function formatDays(value) {
+  if (value == null || String(value).trim() === "") {
+    return "Belirtilmemiş";
+  }
+
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return "Belirtilmemiş";
+  }
+
+  return number.toLocaleString("tr-TR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 5
+  }) + " gün";
+}
+
 function balancePayload(to, balance) {
-  return textPayload(
+  return resultPayload(
     to,
     "📊 *İzin Bakiyem*\n\n" +
-    `Toplam: ${safe(balance.Quota)}\n` +
-    `Kullanılan: ${safe(balance.Usedx)}\n` +
-    `Kalan: ${safe(balance.Balnc)}\n\n` +
-    "SAP izin kotası bilgileri."
+    `Toplam İzin: *${formatDays(balance.Quota)}*\n` +
+    `Kullanılan İzin: *${formatDays(balance.Usedx)}*\n` +
+    `Kalan İzin: *${formatDays(balance.Balnc)}*\n\n` +
+    "_SAP izin kotası bilgileri._"
   );
 }
 
@@ -239,3 +258,178 @@ module.exports = {
   balancePayload,
   sapDate
 };
+
+
+// SAP OData tarihini okunabilir biçime dönüştür
+function formatHistoryDate(value) {
+  if (value == null || value === "") {
+    return "-";
+  }
+
+  const raw = String(value).trim();
+
+  const sapMatch = /^\/Date\((-?\d+)(?:[+-]\d{4})?\)\/$/.exec(raw);
+
+  if (sapMatch) {
+    const date = new Date(Number(sapMatch[1]));
+
+    if (!Number.isNaN(date.getTime())) {
+      return date.toISOString()
+        .slice(0, 10)
+        .split("-")
+        .reverse()
+        .join(".");
+    }
+  }
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+
+  if (iso) {
+    return `${iso[3]}.${iso[2]}.${iso[1]}`;
+  }
+
+  const compact = /^(\d{4})(\d{2})(\d{2})$/.exec(raw);
+
+  if (compact) {
+    return `${compact[3]}.${compact[2]}.${compact[1]}`;
+  }
+
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(raw)) {
+    return raw;
+  }
+
+  return "-";
+}
+
+
+// WhatsApp biçimlendirmesini bozan karakterleri temizle
+function cleanHistoryText(value) {
+  return String(value ?? "")
+    .replace(/[\r\n\t*_~`|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+
+// Doğrudan tablo benzeri izin geçmişi mesajları
+function historyTablePayloads(to, records, ctx) {
+  const { resultPayload } = require("./navigation-messages");
+
+  if (!Array.isArray(records)) {
+    throw new Error("Geçersiz izin geçmişi yanıtı.");
+  }
+
+  function formatDate(value) {
+    if (value == null || value === "") {
+      return "-";
+    }
+
+    const raw = String(value).trim();
+
+    const sap = /^\/Date\((-?\d+)(?:[+-]\d{4})?\)\/$/.exec(raw);
+
+    if (sap) {
+      const date = new Date(Number(sap[1]));
+
+      if (!Number.isNaN(date.getTime())) {
+        return date.toISOString()
+          .slice(0, 10)
+          .split("-")
+          .reverse()
+          .join(".");
+      }
+    }
+
+    const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+
+    if (iso) {
+      return `${iso[3]}.${iso[2]}.${iso[1]}`;
+    }
+
+    const compact = /^(\d{4})(\d{2})(\d{2})$/.exec(raw);
+
+    if (compact) {
+      return `${compact[3]}.${compact[2]}.${compact[1]}`;
+    }
+
+    if (/^\d{2}\.\d{2}\.\d{4}$/.test(raw)) {
+      return raw;
+    }
+
+    return "-";
+  }
+
+  function clean(value) {
+    return String(value ?? "")
+      .replace(/[\r\n\t*_~`|]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  const heading = [
+    "🗓️ *İzin Geçmişim*",
+    "",
+    `*Dönem:* ${formatDate(ctx.begda)} - ${formatDate(ctx.endda)}`,
+    `*Toplam Kayıt:* ${records.length}`
+  ].join("\n");
+
+  if (!records.length) {
+    return [
+      resultPayload(
+        to,
+        heading + "\n\nİzin kaydı bulunamadı."
+      )
+    ];
+  }
+
+  const columns =
+    "*İzin Türü | Başlangıç | Bitiş*\n" +
+    "────────────────────";
+
+  const base = heading + "\n\n" + columns + "\n";
+
+  const pages = [];
+  let current = base;
+
+  for (const record of records) {
+    const type = (
+      clean(record.Atext) ||
+      clean(record.Awart) ||
+      "-"
+    ).slice(0, 120);
+
+    const row = [
+      type,
+      formatDate(record.Begda),
+      formatDate(record.Endda)
+    ].join(" | ");
+
+    if (
+      (current + row + "\n").length > 950 &&
+      current !== base
+    ) {
+      pages.push(current.trimEnd());
+      current = base;
+    }
+
+    current += row + "\n";
+  }
+
+  if (current !== base) {
+    pages.push(current.trimEnd());
+  }
+
+  return pages.map((page, index) => {
+    const body = pages.length > 1
+      ? page + `\n\n_Bölüm ${index + 1}/${pages.length}_`
+      : page;
+
+    if (index === pages.length - 1) {
+      return resultPayload(to, body);
+    }
+
+    return textPayload(to, body);
+  });
+}
+
+module.exports.historyTablePayloads = historyTablePayloads;

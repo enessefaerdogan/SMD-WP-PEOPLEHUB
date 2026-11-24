@@ -22,6 +22,11 @@
                   "next": {
                     "type": "screen",
                     "name": "LEAVE"
+                  },
+                  "payload": {
+                    "leave_types": "${data.leave_types}",
+                    "leave_types_ready": "${data.leave_types_ready}",
+                    "leave_history_hint": "${data.leave_history_hint}"
                   }
                 }
               },
@@ -108,6 +113,40 @@
             ]
           }
         ]
+      },
+      "data": {
+        "leave_types": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          "__example__": [
+            {
+              "id": "0110",
+              "title": "İdari İzin"
+            },
+            {
+              "id": "0120",
+              "title": "Evlilik İzni"
+            }
+          ]
+        },
+        "leave_types_ready": {
+          "type": "boolean",
+          "__example__": true
+        },
+        "leave_history_hint": {
+          "type": "string",
+          "__example__": "İzin türünü ve tarih aralığını seçin."
+        }
       }
     },
     {
@@ -156,6 +195,11 @@
                   "next": {
                     "type": "screen",
                     "name": "LEAVE_HISTORY"
+                  },
+                  "payload": {
+                    "leave_types": "${data.leave_types}",
+                    "leave_types_ready": "${data.leave_types_ready}",
+                    "leave_history_hint": "${data.leave_history_hint}"
                   }
                 }
               },
@@ -188,6 +232,40 @@
             ]
           }
         ]
+      },
+      "data": {
+        "leave_types": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          "__example__": [
+            {
+              "id": "0110",
+              "title": "İdari İzin"
+            },
+            {
+              "id": "0120",
+              "title": "Evlilik İzni"
+            }
+          ]
+        },
+        "leave_types_ready": {
+          "type": "boolean",
+          "__example__": true
+        },
+        "leave_history_hint": {
+          "type": "string",
+          "__example__": "İzin türünü ve tarih aralığını seçin."
+        }
       }
     },
     {
@@ -283,23 +361,83 @@
         "children": [
           {
             "type": "TextHeading",
-            "text": "🗓️ İzin Geçmişim"
+            "text": "İzin Geçmişim"
           },
           {
             "type": "TextBody",
-            "text": "Bu işlemin SAP OData ekranını sonraki aşamada bağlayacağız."
+            "text": "${data.leave_history_hint}"
+          },
+          {
+            "type": "Dropdown",
+            "name": "awart",
+            "label": "İzin Türü",
+            "required": true,
+            "enabled": "${data.leave_types_ready}",
+            "data-source": "${data.leave_types}"
+          },
+          {
+            "type": "CalendarPicker",
+            "name": "period",
+            "mode": "range",
+            "title": "Tarih Aralığı",
+            "label": {
+              "start-date": "Başlangıç",
+              "end-date": "Bitiş"
+            },
+            "required": {
+              "start-date": true,
+              "end-date": true
+            }
           },
           {
             "type": "Footer",
-            "label": "Kapat",
+            "label": "İzin Geçmişimi Sorgula",
+            "enabled": "${data.leave_types_ready}",
             "on-click-action": {
               "name": "complete",
               "payload": {
-                "action": "CLOSE"
+                "action": "LEAVE_FORM",
+                "mode": "HISTR",
+                "awart": "${form.awart}",
+                "period": "${form.period}"
               }
             }
           }
         ]
+      },
+      "data": {
+        "leave_types": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          "__example__": [
+            {
+              "id": "0110",
+              "title": "İdari İzin"
+            },
+            {
+              "id": "0120",
+              "title": "Evlilik İzni"
+            }
+          ]
+        },
+        "leave_types_ready": {
+          "type": "boolean",
+          "__example__": true
+        },
+        "leave_history_hint": {
+          "type": "string",
+          "__example__": "İzin türünü ve tarih aralığını seçin."
+        }
       }
     },
     {
